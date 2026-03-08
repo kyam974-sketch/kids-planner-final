@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kids&Us Planner</title>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+    <style>
+        body { margin: 0; font-family: 'Nunito', sans-serif; background-color: #FAFAF7; color: #3C3C3B; }
+        @keyframes fi { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes sp { to { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef, useCallback } = React;
+
+        const CS = [
+          {id:"mousy",name:"Mousy",color:"#8CB43B",bg:"#F0F7E1",em:"\u{1F42D}",age:"1 anno",parts:["Part One","Part Two","Part Three","Part Four"],dp:10},
+          {id:"linda",name:"Linda",color:"#F26522",bg:"#FFF0E6",em:"\u{1F431}",age:"2 anni",parts:["Part One","Part Two","Part Three","Part Four"],dp:10},
+          {id:"sam",name:"Sam",color:"#00B3B0",bg:"#E0F7F7",em:"\u{1F9F8}",age:"3 anni",parts:["Story 1","Story 2","Story 3","Story 4"],dp:10},
+          {id:"emma",name:"Emma",color:"#E878A0",bg:"#FFF0F5",em:"\u{1F98B}",age:"4 anni",parts:["Story 1","Story 2","Story 3","Story 4"],dp:10},
+          {id:"oliver",name:"Oliver",color:"#00B3B0",bg:"#E0F7F7",em:"\u{1F438}",age:"5 anni",parts:["Story 1","Story 2","Story 3","Story 4"],dp:10},
+          {id:"marcia",name:"Marcia",color:"#E94E58",bg:"#FFEBEE",em:"\u{1F380}",age:"6 anni",parts:["Story 1","Story 2","Story 3","Story 4"],dp:10},
+        ];
+
+        const sG = (k, f = null) => { try { const r = localStorage.getItem(k); return r ? JSON.parse(r) : f; } catch { return f; } };
+        const sS = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch(e) { console.error(e); } };
+
+        function App() {
+          const [view, setV] = useState("home");
+          const [lessons, setL] = useState({});
+          const [sc, setSc] = useState(null);
+          const [sp, setSp] = useState(null);
+          const [sd, setSd] = useState(null);
+          const [st, setSt] = useState("17:00");
+          const [ld, setLd] = useState(true);
+          const [scn, setScn] = useState(false);
+          const [ss, setSs] = useState("");
+          const fr = useRef(null);
+
+          useEffect(() => { setL(sG("ku7", {})); setLd(false); }, []);
+          useEffect(() => { if (!ld) sS("ku7", lessons); }, [lessons, ld]);
+
+          const cl = sc && sp != null && sd != null ? lessons[sc.id + "|" + sp + "|" + sd] : null;
+
+          const scanD = async (files) => {
+            if (!files || !files.length || !sc) return;
+            setScn(true); setSs("Lettura pagine...");
+            try {
+              const imgs = [];
+              for (const f of files) {
+                const b = await new Promise((r) => {
+                  const rd = new FileReader();
+                  rd.onload = () => r(rd.result.split(",")[1]);
+                  rd.readAsDataURL(f);
+                });
+                imgs.push({ type: "image", source: { type: "base64", media_type: f.type || "image/jpeg", data: b } });
+              }
+              
+              setSs("Claude sta analizzando...");
+              const res = await fetch("/api/generate", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  model: "claude-3-5-sonnet-20240620",
+                  max_tokens: 4000,
+                  messages: [{ role: "user", content: [...imgs, { type: "text", text: "Extract lesson activities from these Teacher Guide pages. Return ONLY a JSON array of objects with: name, duration (number), target_language, description, materials." }] }]
+                })
+              });
+
+              const d = await res.json();
+              const txt = d.content?.[0]?.text || "";
+              let parsed = JSON.parse(txt.replace(/```json\n?|```/g, "").trim());
+              
+              const newActivities = parsed.map((p, i) => ({ ...p, id: "a" + Date.now() + i }));
+              setL(prev => ({ ...prev, [sc.id + "|" + sp + "|" + sd]: { activities: newActivities } }));
+              setSs("Fatto!");
+              setTimeout(() => setScn(false), 2000);
+            } catch (e) {
+              setSs("Errore: " + e.message);
+              setTimeout(() => setScn(false), 4000);
+            }
+          };
+
+          if (ld) return <div style={{padding:20}}>Caricamento...</div>;
+
+          return (
+            <div>
+              <header style={{padding: "15px 20px", background: "#fff", borderBottom: "3px solid #8CB43B", display: "flex", justifyContent: "space-between", alignItems: "center"}}>
+                <h1 style={{margin: 0, fontSize: 18, cursor: "pointer"}} onClick={() => setV("home")}>
+                   <span style={{color: "#8CB43B"}}>Kids</span>&Us Planner
+                </h1>
+                {view !== "home" && <button onClick={() => setV("home")} style={{background: "#eee", border: "none", padding: "5px 10px", borderRadius: 5}}>Home</button>}
+              </header>
+
+              <main style={{maxWidth: 800, margin: "20px auto", padding: "0 15px"}}>
+                {view === "home" && (
+                  <div style={{display: "flex", flexDirection: "column", gap: 12}}>
+                    {CS.map(c => (
+                      <div key={c.id} onClick={() => { setSc(c); setV("course"); }} style={{background: "#fff", padding: 20, borderRadius: 15, borderLeft: "6px solid " + c.color, boxShadow: "0 2px 8px rgba(0,0,0,0.05)", cursor: "pointer"}}>
+                        <span style={{fontSize: 24}}>{c.em}</span> <b style={{fontSize: 18, marginLeft: 10}}>{c.name}</b>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {view === "course" && sc && (
+                  <div>
+                    <h2 style={{color: sc.color}}>{sc.em} {sc.name}</h2>
+                    {sc.parts.map(p => (
+                      <div key={p} style={{marginTop: 20}}>
+                        <h4>{p}</h4>
+                        <div style={{display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 8}}>
+                          {[...Array(sc.dp)].map((_, i) => (
+                            <div key={i} onClick={() => { setSp(p); setSd(i+1); setV("lesson"); }} style={{padding: 10, background: "#fff", border: "1px solid #ddd", borderRadius: 8, textAlign: "center", cursor: "pointer"}}>
+                              {i + 1}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {view === "lesson" && (
+                  <div>
+                    <h3>{sc.name} - {sp} - Giorno {sd}</h3>
+                    <div style={{display: "flex", gap: 10, marginBottom: 20}}>
+                        <button onClick={() => fr.current.click()} style={{padding: "12px 20px", background: "#F26522", color: "#fff", border: "none", borderRadius: 10, fontWeight: "bold"}}>
+                            SCAN TEACHER GUIDE
+                        </button>
+                        <input type="file" ref={fr} multiple style={{display: "none"}} onChange={(e) => scanD(e.target.files)} />
+                    </div>
+                    
+                    {scn && <div style={{padding: 15, background: "#FFF3E0", borderRadius: 10, marginBottom: 15}}>{ss}</div>}
+
+                    {cl && cl.activities.map(a => (
+                      <div key={a.id} style={{background: "#fff", padding: 15, borderRadius: 12, marginBottom: 10, borderLeft: "4px solid " + sc.color}}>
+                        <b>{a.name}</b> ({a.duration}m)
+                        {a.target_language && <p style={{fontSize: 13, background: "#f9f9f9", padding: 5, marginTop: 5}}><i>{a.target_language}</i></p>}
+                        <p style={{fontSize: 12, color: "#666"}}>{a.description}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </main>
+            </div>
+          );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
